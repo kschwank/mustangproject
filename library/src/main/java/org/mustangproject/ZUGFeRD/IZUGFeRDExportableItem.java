@@ -202,9 +202,20 @@ public interface IZUGFeRDExportableItem extends IAbsoluteValueProvider{
 	}
 
 	/***
-	 * for sub invoice lines in ZUGFeRD Extended: the status reason code
-	 * determines if a line is relevant for calculation
-	 * @return DETAIL, GROUP, INFORMATION or null for standard lines
+	 * for sub invoice lines in ZUGFeRD Extended: the line status code
+	 * (ram:LineStatusCode). This is the XSD-defined LineStatusCode element,
+	 * separate from LineStatusReasonCode.
+	 * @return the LineStatusCode value, or null if not set
+	 */
+	default String getLineStatusCode() {
+		return null;
+	}
+
+	/***
+	 * for sub invoice lines in ZUGFeRD Extended: the line status reason code
+	 * (ram:LineStatusReasonCode). Per the ZUGFeRD specification and official examples,
+	 * this element carries the GROUP/DETAIL/INFORMATION classification.
+	 * @return GROUP, DETAIL, INFORMATION or null for standard lines
 	 */
 	default String getLineStatusReasonCode() {
 		return null;
@@ -213,7 +224,7 @@ public interface IZUGFeRDExportableItem extends IAbsoluteValueProvider{
 	/***
 	 * checks if this line should be included in sum calculation.
 	 * GROUP and INFORMATION lines are not calculation-relevant,
-	 * only DETAIL lines (or lines without status code) are.
+	 * only DETAIL lines (or lines without a LineStatusReasonCode) are.
 	 * @return true if the line should be included in calculation
 	 */
 	@com.fasterxml.jackson.annotation.JsonIgnore

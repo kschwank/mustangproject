@@ -44,6 +44,7 @@ public class Item implements IZUGFeRDExportableItem {
 	protected List<IncludedNote> includedNotes = null;
 	protected String accountingReference;
 	protected String parentLineID = null;
+	protected String lineStatusCode = null;
 	protected String lineStatusReasonCode = null;
  	protected TradeParty lineSeller;
 	protected String deliveryNoteReferencedDocumentID = null;
@@ -100,6 +101,7 @@ public class Item implements IZUGFeRDExportableItem {
 		itemMap.getAsNodeMap("AssociatedDocumentLineDocument").ifPresent(adld -> {
 			adld.getAsString("LineID").ifPresent(this::setId);
 			adld.getAsString("ParentLineID").ifPresent(this::setParentLineID);
+			adld.getAsString("LineStatusCode").ifPresent(this::setLineStatusCode);
 			adld.getAsString("LineStatusReasonCode").ifPresent(this::setLineStatusReasonCode);
 		});
 
@@ -688,13 +690,32 @@ public class Item implements IZUGFeRDExportableItem {
 	}
 
 	@Override
+	public String getLineStatusCode() {
+		return lineStatusCode;
+	}
+
+	/***
+	 * for sub invoice lines in ZUGFeRD Extended: set the line status code
+	 * (ram:LineStatusCode). This is the XSD-defined LineStatusCode element,
+	 * separate from LineStatusReasonCode.
+	 * @param lineStatusCode the LineStatusCode value
+	 * @return fluent setter
+	 */
+	public Item setLineStatusCode(String lineStatusCode) {
+		this.lineStatusCode = lineStatusCode;
+		return this;
+	}
+
+	@Override
 	public String getLineStatusReasonCode() {
 		return lineStatusReasonCode;
 	}
 
 	/***
-	 * for sub invoice lines: set the status reason code (DETAIL, GROUP, INFORMATION)
-	 * @param lineStatusReasonCode the status reason code
+	 * for sub invoice lines in ZUGFeRD Extended: set the line status reason code
+	 * (ram:LineStatusReasonCode). Per the ZUGFeRD specification and official examples,
+	 * use GROUP, DETAIL or INFORMATION here to classify hierarchical lines.
+	 * @param lineStatusReasonCode GROUP, DETAIL or INFORMATION
 	 * @return fluent setter
 	 */
 	public Item setLineStatusReasonCode(String lineStatusReasonCode) {

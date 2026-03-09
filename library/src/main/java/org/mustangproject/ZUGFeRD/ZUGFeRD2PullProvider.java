@@ -419,10 +419,20 @@ public class ZUGFeRD2PullProvider implements IXMLProvider {
 			if ((getProfile() != Profiles.getByName("Minimum")) && (getProfile() != Profiles.getByName("BasicWL"))) {
 				xml += "<ram:IncludedSupplyChainTradeLineItem>" +
 					"<ram:AssociatedDocumentLineDocument>"
-					+ "<ram:LineID>" + lineIDStr + "</ram:LineID>"
-					+ buildItemNotes(currentItem)
+					+ "<ram:LineID>" + lineIDStr + "</ram:LineID>";
+				if (profile == Profiles.getByName("Extended") && currentItem.getParentLineID() != null) {
+					xml += "<ram:ParentLineID>" + XMLTools.encodeXML(currentItem.getParentLineID()) + "</ram:ParentLineID>";
+				}
+				// XSD order: LineStatusCode then LineStatusReasonCode (GROUP/DETAIL/INFORMATION go in LineStatusReasonCode per ZUGFeRD spec)
+				if (profile == Profiles.getByName("Extended") && currentItem.getLineStatusCode() != null) {
+					xml += "<ram:LineStatusCode>" + XMLTools.encodeXML(currentItem.getLineStatusCode()) + "</ram:LineStatusCode>";
+				}
+				if (profile == Profiles.getByName("Extended") && currentItem.getLineStatusReasonCode() != null) {
+					xml += "<ram:LineStatusReasonCode>" + XMLTools.encodeXML(currentItem.getLineStatusReasonCode()) + "</ram:LineStatusReasonCode>";
+				}
+				// isCalculationRelevant() on the interface returns false for GROUP/INFORMATION lines
+				xml += buildItemNotes(currentItem)
 					+ "</ram:AssociatedDocumentLineDocument>"
-
 					+ "<ram:SpecifiedTradeProduct>";
 				if ((currentItem.getProduct().getGlobalIDScheme() != null) && (currentItem.getProduct().getGlobalID() != null)) {
 					xml += "<ram:GlobalID schemeID=\"" + XMLTools.encodeXML(currentItem.getProduct().getGlobalIDScheme()) + "\">" + XMLTools.encodeXML(currentItem.getProduct().getGlobalID()) + "</ram:GlobalID>";
