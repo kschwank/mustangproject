@@ -125,90 +125,147 @@ class HierarchicalPositionsTest {
     }
 
     /**
-     * Generates an Extended profile invoice with two GROUP lines (different VAT rates: 7% and 19%),
-     * each with two DETAIL child lines.  The output is written to
-     * {@code ./target/testout-ZF2HierarchicalMixedVAT.xml} and
-     * {@code ./target/testout-ZF2HierarchicalMixedVAT.pdf} so that external validators
-     * (e.g. Mustang-CLI, Konik, VeraPDF) and visualisation tools can inspect the result.
+     * Generates an Extended profile invoice modelling a European rail journey
+     * with two trips and hierarchical positions. This is a German invoice
+     * issued by EuroRail Services GmbH. The foreign rail segments (France, Belgium)
+     * are not subject to German VAT because the tax is settled by the foreign
+     * train operators (SNCF, SNCB) in their respective countries.
+     * <pre>
+     *   1  GROUP  Frankfurt Hbf to Paris Est (entire trip)
+     *   2  DETAIL   Fahrkarte DE-Abschnitt Frankfurt to Saarbruecken      (19 % DE VAT, category S)
+     *   3  DETAIL   Sitzplatzreservierung DE-Abschnitt                    (19 % DE VAT, category S)
+     *   4  DETAIL   Billet FR-troncon Forbach to Paris Est                 (not subject to DE VAT, category O)
+     *   5  DETAIL   Reservation siege FR-troncon                          (not subject to DE VAT, category O)
+     *   6  GROUP  Paris Nord to Bruxelles-Midi (entire trip)
+     *   7  DETAIL   Ticket BE-traject Paris Nord to Bruxelles-Midi        (not subject to DE VAT, category O)
+     *   8  DETAIL   Zitplaatsreservering BE-traject                       (not subject to DE VAT, category O)
+     * </pre>
+     *
+     * Output files (for external validators and visualisation tools):
+     * <ul>
+     *   <li>{@code ./target/testout-ZF2HierarchicalTrainTicket.xml} - standalone CII XML</li>
+     *   <li>{@code ./target/testout-ZF2HierarchicalTrainTicket.pdf} - PDF rendered from XML
+     *       via {@link ZUGFeRDVisualizer} so that visual content and data are consistent</li>
+     * </ul>
      */
     @Test
-    void testHierarchicalMixedVATOutputFiles() throws IOException, ParseException {
+    void testHierarchicalTrainTicketOutputFiles() throws Exception {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
 
-        // --- seller ---
-        TradeParty sender = new TradeParty("Bei Spiel GmbH", "Ecke 12", "12345", "Stadthausen", "DE")
-                .addVATID("DE136695976")
-                .addBankDetails(new BankDetails("DE88200800000970375700", "COBADEFFXXX"));
+        // --- Seller: German rail operator ---
+        TradeParty sender = new TradeParty(
+                "EuroRail Services GmbH", "Bahnhofsplatz 1", "60329", "Frankfurt am Main", "DE")
+                .addVATID("DE812526315")
+                .addBankDetails(new BankDetails("DE89370400440532013000", "COBADEFFXXX"));
 
-        // --- buyer ---
-        TradeParty recipient = new TradeParty("Theodor Est", "Bahnstr. 42", "88802", "Spielkreis", "DE")
-                .setContact(new Contact("Ingmar N. Fo", "+49555237823", "info@localhost.local"));
+        // --- Buyer: business traveller ---
+        TradeParty recipient = new TradeParty(
+                "Sophie Beismann", "Rue de la Loi 42", "1040", "Bruxelles", "BE")
+                .setContact(new Contact("Sophie Beismann", "+32-2-555-0199", "sophie.beismann@example.com"));
 
-        // ===== Group 1 – Books (7 % VAT) =====
-        // Parent GROUP line (zero price, carries the section heading)
-        Item group1 = new Item(
-                new Product("Bücher-Paket", "Buchpaket Frühjahr 2026", "C62", new BigDecimal("7")),
+        // =====================================================================
+        // Trip 1: Frankfurt Hbf -> Paris Est  (GROUP line 1)
+        //   DE segment: 19% German VAT (standard rate)
+        //   FR segment: not subject to German VAT (tax paid by SNCF)
+        // =====================================================================
+        Item trip1 = new Item(
+                new Product("Fahrt Frankfurt - Paris",
+                        "Frankfurt Hbf - Paris Est, ICE/TGV", "C62", new BigDecimal("19")),
                 BigDecimal.ZERO, BigDecimal.ONE)
                 .setId("1")
                 .setLineStatusReasonCode("GROUP");
 
-        // Child 1.1 – single book, 7 %
-        Item detail1_1 = new Item(
-                new Product("Fachbuch Java", "ISBN 978-3-86490-111-1", "C62", new BigDecimal("7")),
-                new BigDecimal("39.90"), new BigDecimal("2"))
+        // DE leg - ticket (19% VAT)
+        Item trip1_deTicket = new Item(
+                new Product("Fahrkarte 2. Klasse DE-Abschnitt",
+                        "Frankfurt Hbf - Saarbruecken Hbf, ICE 9551", "C62", new BigDecimal("19")),
+                new BigDecimal("47.50"), BigDecimal.ONE)
                 .setId("2")
                 .setParentLineID("1")
                 .setLineStatusReasonCode("DETAIL");
 
-        // Child 1.2 – second book, 7 %
-        Item detail1_2 = new Item(
-                new Product("Fachbuch XML", "ISBN 978-3-86490-222-2", "C62", new BigDecimal("7")),
-                new BigDecimal("29.90"), new BigDecimal("1"))
+        // DE leg - seat reservation (19% VAT)
+        Item trip1_deSeat = new Item(
+                new Product("Sitzplatzreservierung DE-Abschnitt",
+                        "Wagen 26 Platz 53, Fenster", "C62", new BigDecimal("19")),
+                new BigDecimal("4.50"), BigDecimal.ONE)
                 .setId("3")
                 .setParentLineID("1")
                 .setLineStatusReasonCode("DETAIL");
 
-        // ===== Group 2 – Electronics (19 % VAT) =====
-        Item group2 = new Item(
-                new Product("Elektronik-Paket", "Hardware und Zubehör", "C62", new BigDecimal("19")),
-                BigDecimal.ZERO, BigDecimal.ONE)
+        // FR leg - ticket (not subject to German VAT, tax paid by SNCF)
+        Product frTicketProduct = new Product("Billet 2eme classe troncon FR",
+                "Forbach - Paris Est, TGV 9552", "C62", BigDecimal.ZERO);
+        frTicketProduct.setTaxCategoryCode("O");
+        frTicketProduct.setTaxExemptionReason("Steuer wird durch SNCF im Ausland abgefuehrt");
+        Item trip1_frTicket = new Item(frTicketProduct, new BigDecimal("62.00"), BigDecimal.ONE)
                 .setId("4")
+                .setParentLineID("1")
+                .setLineStatusReasonCode("DETAIL");
+
+        // FR leg - seat reservation (not subject to German VAT)
+        Product frSeatProduct = new Product("Reservation siege troncon FR",
+                "Voiture 4 Place 28", "C62", BigDecimal.ZERO);
+        frSeatProduct.setTaxCategoryCode("O");
+        frSeatProduct.setTaxExemptionReason("Steuer wird durch SNCF im Ausland abgefuehrt");
+        Item trip1_frSeat = new Item(frSeatProduct, new BigDecimal("3.00"), BigDecimal.ONE)
+                .setId("5")
+                .setParentLineID("1")
+                .setLineStatusReasonCode("DETAIL");
+
+        // =====================================================================
+        // Trip 2: Paris Nord -> Bruxelles-Midi  (GROUP line 6)
+        //   entirely outside Germany: not subject to German VAT (tax paid by SNCB)
+        // =====================================================================
+        Product trip2Product = new Product("Fahrt Paris - Bruxelles",
+                "Paris Nord - Bruxelles-Midi, Thalys 9364", "C62", BigDecimal.ZERO);
+        trip2Product.setTaxCategoryCode("O");
+        trip2Product.setTaxExemptionReason("Steuer wird durch SNCB im Ausland abgefuehrt");
+        Item trip2 = new Item(trip2Product, BigDecimal.ZERO, BigDecimal.ONE)
+                .setId("6")
                 .setLineStatusReasonCode("GROUP");
 
-        // Child 2.1 – USB hub, 19 %
-        Item detail2_1 = new Item(
-                new Product("USB-Hub 4-Port", "USB 3.0, aktiv", "C62", new BigDecimal("19")),
-                new BigDecimal("24.99"), new BigDecimal("3"))
-                .setId("5")
-                .setParentLineID("4")
+        // BE leg - ticket (not subject to German VAT)
+        Product beTicketProduct = new Product("Ticket 2de klasse BE-traject",
+                "Paris Nord - Bruxelles-Midi, Thalys 9364", "C62", BigDecimal.ZERO);
+        beTicketProduct.setTaxCategoryCode("O");
+        beTicketProduct.setTaxExemptionReason("Steuer wird durch SNCB im Ausland abgefuehrt");
+        Item trip2_beTicket = new Item(beTicketProduct, new BigDecimal("55.00"), BigDecimal.ONE)
+                .setId("7")
+                .setParentLineID("6")
                 .setLineStatusReasonCode("DETAIL");
 
-        // Child 2.2 – HDMI cable, 19 %
-        Item detail2_2 = new Item(
-                new Product("HDMI-Kabel 2m", "4K, vergoldet", "C62", new BigDecimal("19")),
-                new BigDecimal("9.99"), new BigDecimal("5"))
-                .setId("6")
-                .setParentLineID("4")
+        // BE leg - seat reservation (not subject to German VAT)
+        Product beSeatProduct = new Product("Zitplaatsreservering BE-traject",
+                "Rijtuig 12 Plaats 7", "C62", BigDecimal.ZERO);
+        beSeatProduct.setTaxCategoryCode("O");
+        beSeatProduct.setTaxExemptionReason("Steuer wird durch SNCB im Ausland abgefuehrt");
+        Item trip2_beSeat = new Item(beSeatProduct, new BigDecimal("4.00"), BigDecimal.ONE)
+                .setId("8")
+                .setParentLineID("6")
                 .setLineStatusReasonCode("DETAIL");
 
+        // --- Build the invoice ---
         Invoice invoice = new Invoice()
-                .setNumber("INV-2026-HIER-MIXED-001")
+                .setNumber("RAIL-2026-EU-00417")
                 .setIssueDate(sdf.parse("2026-03-09"))
-                .setDeliveryDate(sdf.parse("2026-03-07"))
+                .setDeliveryDate(sdf.parse("2026-03-15"))
                 .setDueDate(sdf.parse("2026-04-09"))
                 .setSender(sender)
                 .setRecipient(recipient)
                 .setCurrency("EUR")
-                .addItem(group1)
-                .addItem(detail1_1)
-                .addItem(detail1_2)
-                .addItem(group2)
-                .addItem(detail2_1)
-                .addItem(detail2_2);
+                .addItem(trip1)
+                .addItem(trip1_deTicket)
+                .addItem(trip1_deSeat)
+                .addItem(trip1_frTicket)
+                .addItem(trip1_frSeat)
+                .addItem(trip2)
+                .addItem(trip2_beTicket)
+                .addItem(trip2_beSeat);
 
-        // --- write XML ---
-        final String TARGET_XML = "./target/testout-ZF2HierarchicalMixedVAT.xml";
-        final String TARGET_PDF = "./target/testout-ZF2HierarchicalMixedVAT.pdf";
+        // --- Generate standalone XML ---
+        final String TARGET_XML = "./target/testout-ZF2HierarchicalTrainTicket.xml";
+        final String TARGET_PDF = "./target/testout-ZF2HierarchicalTrainTicket.pdf";
 
         ZUGFeRD2PullProvider provider = new ZUGFeRD2PullProvider();
         provider.setProfile(Profiles.getByName("Extended"));
@@ -218,44 +275,33 @@ class HierarchicalPositionsTest {
 
         Files.write(Paths.get(TARGET_XML), xmlBytes);
 
-        // --- basic content assertions on the XML ---
-        assertTrue(xml.contains("<ram:LineID>1</ram:LineID>"), "Group 1 LineID");
-        assertTrue(xml.contains("<ram:LineID>4</ram:LineID>"), "Group 2 LineID");
-        assertTrue(xml.contains("<ram:ParentLineID>1</ram:ParentLineID>"), "Children of group 1 reference parent");
-        assertTrue(xml.contains("<ram:ParentLineID>4</ram:ParentLineID>"), "Children of group 2 reference parent");
-        // Both VAT rates must appear
-        assertTrue(xml.contains(">7.00<") || xml.contains(">7<"), "7% VAT rate in XML");
-        assertTrue(xml.contains(">19.00<") || xml.contains(">19<"), "19% VAT rate in XML");
+        // --- Assertions on hierarchical structure ---
+        // Two GROUP parents (trip 1 = line 1, trip 2 = line 6)
+        assertTrue(xml.contains("<ram:LineID>1</ram:LineID>"), "Trip 1 group LineID");
+        assertTrue(xml.contains("<ram:LineID>6</ram:LineID>"), "Trip 2 group LineID");
+        // Trip 1 children (lines 2-5) all reference parent 1
+        assertTrue(xml.contains("<ram:ParentLineID>1</ram:ParentLineID>"), "Trip 1 children reference parent");
+        // Trip 2 children (lines 7-8) reference parent 6
+        assertTrue(xml.contains("<ram:ParentLineID>6</ram:ParentLineID>"), "Trip 2 children reference parent");
         // GROUP and DETAIL markers
         assertTrue(xml.contains("<ram:LineStatusReasonCode>GROUP</ram:LineStatusReasonCode>"), "GROUP code");
         assertTrue(xml.contains("<ram:LineStatusReasonCode>DETAIL</ram:LineStatusReasonCode>"), "DETAIL code");
+        // DE segments: 19% standard rate
+        assertTrue(xml.contains(">19.00<") || xml.contains(">19<"), "19% DE VAT rate");
+        // FR and BE segments: not subject to tax (category O), exemption reason present
+        assertTrue(xml.contains("<ram:CategoryCode>O</ram:CategoryCode>"), "Category O for non-DE segments");
+        assertTrue(xml.contains("<ram:ExemptionReason>Steuer wird durch SNCF im Ausland abgefuehrt</ram:ExemptionReason>"),
+                "FR exemption reason");
+        assertTrue(xml.contains("<ram:ExemptionReason>Steuer wird durch SNCB im Ausland abgefuehrt</ram:ExemptionReason>"),
+                "BE exemption reason");
+        // Standard rate also present for DE segments
+        assertTrue(xml.contains("<ram:CategoryCode>S</ram:CategoryCode>"), "Category S for DE segments");
 
-        // --- write PDF with embedded XML ---
-        InputStream sourcePdf = getClass().getResourceAsStream(
-                "/MustangGnuaccountingBeispielRE-20201121_508blanko.pdf");
-        assertNotNull(sourcePdf, "Blank source PDF must exist in test resources");
-
-        try (ZUGFeRDExporterFromA1 ze = new ZUGFeRDExporterFromA1()) {
-            ze.ignorePDFAErrors();
-            ze.load(sourcePdf);
-            ze.setProducer("mustangproject HierarchicalPositionsTest")
-              .setCreator("mustangproject")
-              .setZUGFeRDVersion(2)
-              .setProfile(Profiles.getByName("Extended"));
-            ze.setTransaction(invoice);
-            ze.export(TARGET_PDF);
-        }
-
-        // --- verify the PDF was created and contains the expected XML snippet ---
-        ZUGFeRDImporter zi = new ZUGFeRDImporter(TARGET_PDF);
-        String embeddedXml = zi.getUTF8();
-        assertTrue(embeddedXml.contains("<ram:ParentLineID>1</ram:ParentLineID>"),
-                "Embedded XML in PDF must contain ParentLineID reference to group 1");
-        assertTrue(embeddedXml.contains("<ram:ParentLineID>4</ram:ParentLineID>"),
-                "Embedded XML in PDF must contain ParentLineID reference to group 2");
-        assertTrue(embeddedXml.contains("<ram:LineStatusReasonCode>GROUP</ram:LineStatusReasonCode>"),
-                "Embedded XML in PDF must contain GROUP marker");
-        assertTrue(embeddedXml.contains("<rsm:CrossIndustryInvoice"),
-                "Embedded XML must be a CII document");
+        // --- Generate a visualisation PDF from the XML (content matches!) ---
+        ZUGFeRDVisualizer visualizer = new ZUGFeRDVisualizer();
+        byte[] pdfBytes = visualizer.toPDF(xml);
+        assertNotNull(pdfBytes, "Visualisation PDF bytes must not be null");
+        assertTrue(pdfBytes.length > 0, "Visualisation PDF must not be empty");
+        Files.write(Paths.get(TARGET_PDF), pdfBytes);
     }
 }
