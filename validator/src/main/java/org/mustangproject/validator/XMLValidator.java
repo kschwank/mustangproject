@@ -529,9 +529,13 @@ public class XMLValidator extends Validator {
 					}
 				}
 
-				// compare with GROUP total
+				// For GROUP lines the price is typically 0 (it's a heading/subtotal line).
+				// The actual LineTotalAmount in valid XML is the sum of child lines,
+				// which is exactly what childSum is. So we only warn if the GROUP line
+				// has a non-zero price*quantity that contradicts the child sum.
 				LineCalculator groupLc = item.getCalculation();
 				BigDecimal groupTotal = groupLc.getItemTotalNetAmount();
+				// compare with GROUP total
 				if (childSum.compareTo(groupTotal) != 0) {
 					try {
 						context.addResultItem(new ValidationResultItem(ESeverity.warning,

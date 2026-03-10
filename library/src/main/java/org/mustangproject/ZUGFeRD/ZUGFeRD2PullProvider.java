@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Optional;
@@ -408,6 +409,41 @@ public class ZUGFeRD2PullProvider implements IXMLProvider {
 			+ buildNotes(trans)
 			+ "</rsm:ExchangedDocument>"
 			+ "<rsm:SupplyChainTradeTransaction>";
+
+		// Pre-compute LineTotalAmount for GROUP lines (BR-FXEXT-08):
+		// A GROUP line's LineTotalAmount must equal the sum of its direct children's LineTotalAmount.
+		// We also override ChargeAmount (net price) so validators recalculating price*qty get the same result.
+		HashMap<String, BigDecimal> groupLineTotals = new HashMap<>();
+		if (profile == Profiles.getByName("Extended")) {
+			HashMap<String, BigDecimal> itemLineTotals = new HashMap<>();
+			int tmpLineID = 0;
+			for (final IZUGFeRDExportableItem item : trans.getZFItems()) {
+				tmpLineID++;
+				String id = item.getId() != null ? item.getId() : Integer.toString(tmpLineID);
+				itemLineTotals.put(id, item.getCalculation().getItemTotalNetAmount());
+			}
+			tmpLineID = 0;
+			for (final IZUGFeRDExportableItem item : trans.getZFItems()) {
+				tmpLineID++;
+				String id = item.getId() != null ? item.getId() : Integer.toString(tmpLineID);
+				if ("GROUP".equals(item.getLineStatusReasonCode())) {
+					BigDecimal childSum = BigDecimal.ZERO;
+					int innerLineID = 0;
+					for (final IZUGFeRDExportableItem child : trans.getZFItems()) {
+						innerLineID++;
+						if (id.equals(child.getParentLineID())) {
+							String childId = child.getId() != null ? child.getId() : Integer.toString(innerLineID);
+							BigDecimal childTotal = itemLineTotals.get(childId);
+							if (childTotal != null) {
+								childSum = childSum.add(childTotal);
+							}
+						}
+					}
+					groupLineTotals.put(id, childSum);
+				}
+			}
+		}
+
 		int lineID = 0;
 		for (final IZUGFeRDExportableItem currentItem : trans.getZFItems()) {
 			lineID++;
@@ -531,7 +567,9 @@ public class ZUGFeRD2PullProvider implements IXMLProvider {
 				}
 
 				xml += "<ram:NetPriceProductTradePrice>"
-					+ "<ram:ChargeAmount>" + priceFormat(lc.getPrice())
+					+ "<ram:ChargeAmount>" + priceFormat(
+						groupLineTotals.containsKey(lineIDStr) ? groupLineTotals.get(lineIDStr) : lc.getPrice()
+					)
 					+ "</ram:ChargeAmount>" // currencyID=\"EUR\"
 					+ "<ram:BasisQuantity unitCode=\"" + XMLTools.encodeXML(currentItem.getProduct().getUnit())
 					+ "\">" + quantityFormat(currentItem.getBasisQuantity()) + "</ram:BasisQuantity>"
@@ -608,7 +646,9 @@ public class ZUGFeRD2PullProvider implements IXMLProvider {
 					xml += itemTotalAllowanceChargeStr ;
 				}
 				xml += "<ram:SpecifiedTradeSettlementLineMonetarySummation>"
-					+ "<ram:LineTotalAmount>" + currencyFormat(lc.getItemTotalNetAmount())
+					+ "<ram:LineTotalAmount>" + currencyFormat(
+						groupLineTotals.containsKey(lineIDStr) ? groupLineTotals.get(lineIDStr) : lc.getItemTotalNetAmount()
+					)
 					+ "</ram:LineTotalAmount>" // currencyID=\"EUR\"
 					+ "</ram:SpecifiedTradeSettlementLineMonetarySummation>";
 				if (currentItem.getAdditionalReferences() != null) {
